@@ -1,11 +1,10 @@
 import warnings, os, random, wandb
 warnings.filterwarnings("ignore")
-os.environ['CUDA_VISIBLE_DEVICES'] = '0' # 可用的GPU
+os.environ['CUDA_VISIBLE_DEVICES'] = '6' # 可用的GPU
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 from config import config
 from writer import JsonFile
-from processor import Processor
 from processor_utils import *
 
 def get_model(args, model_name=None):
@@ -39,28 +38,30 @@ def run(args):
     
     if args.train['inference']:
         processor.loadState()
-        processor._evaluate(stage='test')
-    else: result = processor._train()
+        result = processor._evaluate(stage='test')
+        return {'metric': {'te_mf1:': result['weighted_f1']}}
+    else: 
+        result = processor._train()
 
-    if args.train['wandb']: wandb.finish() 
-    ## 2. 输出统计结果
-    record = {
-        'params': {
-            'e':       args.train['epochs'],
-            'es':      args.train['early_stop'],
-            'lr':      args.train['learning_rate'],
-            'lr_pre':  args.train['learning_rate_pre'],
-            'bz':      args.train['batch_size'],
-            'dr':      args.model['drop_rate'],
-            'seed':    args.train['seed'],
-        },
-        'metric': {
-            'stop':    result['epoch'],
-            'tv_mf1':  result['valid']['weighted_f1'],
-            'te_mf1':  result['test']['weighted_f1'],
-        },
-    }
-    return record
+        if args.train['wandb']: wandb.finish() 
+        ## 2. 输出统计结果
+        record = {
+            'params': {
+                'e':       args.train['epochs'],
+                'es':      args.train['early_stop'],
+                'lr':      args.train['learning_rate'],
+                'lr_pre':  args.train['learning_rate_pre'],
+                'bz':      args.train['batch_size'],
+                'dr':      args.model['drop_rate'],
+                'seed':    args.train['seed'],
+            },
+            'metric': {
+                'stop':    result['epoch'],
+                'tv_mf1':  result['valid']['weighted_f1'],
+                'te_mf1':  result['test']['weighted_f1'],
+            },
+        }
+        return record
 
 
 if __name__ == '__main__':
@@ -91,14 +92,14 @@ if __name__ == '__main__':
     args.train['epochs'] = 6
     args.train['early_stop'] = 2
     args.train['batch_size'] = 2
-    args.train['save_model'] = False
     args.train['log_step_rate'] = 1.0
     args.train['learning_rate'] = 5e-6
     args.train['learning_rate_pre'] = 5e-6
-
     args.model['drop_rate'] = 0.1
 
-    args.train['inference'] = 0
+    args.train['do_test'] = 0
+    args.train['save_model'] = 0
+    args.train['inference'] = 1
     args.train['wandb'] = 0 # True
     if args.train['wandb']:
         wandb.init(
@@ -106,10 +107,11 @@ if __name__ == '__main__':
             name=args.train['data'],
         )
 
-    seeds = []
+    seeds = [8521]
     ## Cycle Training
-    if seeds: # 按指定 seed 执行
-        recoed_path = f"{args.file['record']}{args.model['name']}_best.json"
+    if seeds or args.train['inference']: # 按指定 seed 执行
+        if not seeds: seeds = [args.train['seed']]
+        recoed_path = f"{args.file['record']}{args.model['name']}_best.jsonl"
         record_show = JsonFile(recoed_path, mode_w='a', delete=True)
         for seed in seeds:
             args.train['seed'] = seed
@@ -117,7 +119,7 @@ if __name__ == '__main__':
             record = run(args)
             record_show.write(record, space=False) 
     else: # 随机 seed 执行       
-        recoed_path = f"{args.file['record']}{args.model['name']}_search.json"
+        recoed_path = f"{args.file['record']}{args.model['name']}_search.jsonl"
         record_show = JsonFile(recoed_path, mode_w='a', delete=True)
         for c in range(100):
             args.train['seed'] = random.randint(1000,9999)+c

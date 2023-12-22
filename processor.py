@@ -152,33 +152,15 @@ class Processor():
         iter_total = int(len(self.dataloader['train'])*args.train['epochs']) - iter
         self.optimizer = get_optimizer(args, model)
         self.scheduler = get_scheduler(args, self.optimizer, iter_total)
+
+        # load checkpoint
+        if self.args.train['inference']: # 
+            checkpoint = torch.load(self.save_path+f'model.state')
+            self.model.load_state_dict(checkpoint['net'])
+            self.best_result = checkpoint['result']
+            self.optimizer.load_state_dict(checkpoint['optimizer'])
+
         return start_e, args
-
-        files = os.listdir(self.save_path)
-        if len(files) == 0: 
-            iter_total = int(len(self.dataloader['train'])*params.epochs) - iter
-            self.optimizer, self.scheduler = optimizers(self.model, params=params, iter_total=iter_total)
-            return start_e
-        
-        scores = [float(name[0:-6]) for name in files]
-        idx = scores.index(sorted(scores)[-2])
-        #diff = [abs(score-self.model.params.baseline*bl_rate) for score in scores]
-        #idx = diff.index(min(diff))
-        load_model_path = self.save_path + files[idx]
-        checkpoint = torch.load(load_model_path)
-        self.model.load_state_dict(checkpoint['net'])
-        self.best_result = checkpoint['result']
-        # self.optimizer.load_state_dict(checkpoint['optimizer'])
-
-        # self.global_step = int(checkpoint['step'] / (args.batch_size/checkpoint['batch_size']))
-        # start_e = self.global_step // len(self.dataloader['train'])
-        #_, self.scheduler = self.model._optimizer(optimizer=self.optimizer, iter=self.global_step)
-
-        params.learning_rate_pre = checkpoint['optimizer']['param_groups'][0]['lr']
-        iter_total = int(len(self.dataloader['train'])*params.epochs) - iter
-        self.optimizer, self.scheduler = optimizers(self.model, params=params, iter_total=iter_total)
-        
-        return start_e
 
     def _train(self):
         ## Initial Model and Processor
@@ -246,7 +228,7 @@ class Processor():
                         'result': self.best_result,
                         'batch_size': args.train['batch_size'],
                     }
-                    torch.save(state, self.save_path+f'{score[self.metrics[0]]}.state')
+                    torch.save(state, self.save_path+f'model.state')
 
                 # 4. 看看在测试集上的效果
                 if args.train['do_test']:
